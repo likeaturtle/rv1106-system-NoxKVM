@@ -51,11 +51,49 @@
 			232 233 234 235 236 237 238 239
 			240 241 242 243 244 245 246 247
 			248 249 250 251 252 253 254 255>;
-		default-brightness-level = <64>;
+		default-brightness-level = <100>;
 	};
+	
+	/* SPI NAND 分区定义（可选，用于 MTD 子系统） */
+	spi_nand_partitions: partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
 
+		partition@0 {
+			label = "env";
+			reg = <0x00000000 0x00040000>;  /* 256KB */
+		};
+		partition@40000 {
+			label = "idblock";
+			reg = <0x00040000 0x00040000>;  /* 256KB */
+		};
+		partition@80000 {
+			label = "uboot";
+			reg = <0x00080000 0x00080000>;  /* 512KB */
+		};
+		partition@100000 {
+			label = "boot";
+			reg = <0x00100000 0x01000000>;  /* 16MB */
+		};
+		partition@1100000 {
+			label = "system_a";
+			reg = <0x01100000 0x04000000>;  /* 64MB */
+		};
+		partition@5100000 {
+			label = "system_b";
+			reg = <0x05100000 0x04000000>;  /* 64MB */
+		};
+		partition@9100000 {
+			label = "misc";
+			reg = <0x09100000 0x00080000>;  /* 512KB */
+		};
+		partition@9180000 {
+			label = "userdata";
+			reg = <0x09180000 0x00000000>;  /* 剩余空间 */
+		};
+	};
 };
-
 &pwm5 {
 	status = "okay";
 	pinctrl-names = "active";
@@ -63,20 +101,45 @@
 };
 
 
-/**********FLASH**********/
-&sfc {
+/**********FLASH - SPI NAND **********/
+/* 禁用 eMMC */
+&emmc {
 	status = "disabled";
 };
 
-&emmc {
-	bus-width = <8>;
+/* 启用 SFC (SPI NAND) */
+&sfc {
+	status = "okay";
+//	pinctrl-names = "default";
+//	pinctrl-0 = <&fspi_pins>;
+	flash@0 {
+		compatible = "spi-nand";
+		reg = <0>;
+		spi-max-frequency = <75000000>;
+		spi-rx-bus-width = <4>;
+		spi-tx-bus-width = <1>;
+		/* 如果需要 MTD 分区，取消注释 */
+		/* partitions = <&spi_nand_partitions>; */
+	};
+};
+
+/**********SDMMC**********/
+&sdmmc {
+	max-freqency = <50000000>;
+	no-mmc;
+	bus-width = <4>;
 	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	disable-wp;
+
+	//sdio
+	cap-sdio-irq;
 	non-removable;
-	// mmc-hs200-1_8v;
-	rockchip,default-sample-phase = <90>;
-	no-sdio;
-	no-sd;
-	post-power-on-delay-ms = <0>;
+	no-1-8-v;
+	supports-sdio;
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdmmc0_clk &sdmmc0_cmd &sdmmc0_det &sdmmc0_bus4>;
 	status = "okay";
 };
 
@@ -128,7 +191,7 @@
 		interrupts = <RK_PA2 IRQ_TYPE_LEVEL_LOW>;
 		reset-gpios = <&gpio2 RK_PA3 GPIO_ACTIVE_LOW>;
 		touchscreen-size-x = <240>;
-		touchscreen-size-y = <300>;
+		touchscreen-size-y = <320>;
 		threshold = <40>;
 		touch_type = <1>;
  	};
@@ -146,6 +209,11 @@
         compatible = "sitronix,st7789v";
         reg = <0>;
         spi-max-frequency = <20000000>;
+		// 添加分辨率参数
+        width = <240>;      // 自定义宽度
+        height = <320>;     // 自定义高度
+        rotate = <180>;       // 旋转角度: 0, 90, 180, 270
+        bgr = <0>; 
         fps = <30>;
         buswidth = <8>;
         // debug = <0x7>;

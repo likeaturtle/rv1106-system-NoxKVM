@@ -7,7 +7,7 @@
 
 / {
 	chosen {
-		bootargs = "earlycon=uart8250,mmio32,0xff4c0000 console=ttyFIQ0 rootwait snd_soc_core.prealloc_buffer_size_kbytes=16 coherent_pool=0";
+		bootargs = "earlycon=uart8250,mmio32,0xff4c0000 console=ttyFIQ0 root=ubi0:system_a ubi.mtd=4 rootfstype=ubifs rootwait snd_soc_core.prealloc_buffer_size_kbytes=16 coherent_pool=0";
 	};
 
 	vcc_1v8: vcc-1v8 {
@@ -38,6 +38,15 @@
 		regulator-always-on;
 		regulator-boot-on;
 		regulator-settling-time-up-us = <250>;
+	};
+
+	leds: leds {
+		compatible = "gpio-leds";
+		work_led: work{
+			gpios = <&gpio3 RK_PC6 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "activity";
+			default-state = "on";
+		};	
 	};
 
 	hdmi_osc: hdmi-osc {
