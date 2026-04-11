@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# Start network LED control service
+#
+
+# Path to the network_led.sh
+SCRIPT_PATH="/userdata/network_led.sh"
+
+case "$1" in
+  start)
+	printf "Starting network LED control: "
+	if [ -x "$SCRIPT_PATH" ]; then
+		"$SCRIPT_PATH" start
+		[ $? = 0 ] && echo "OK" || echo "FAIL"
+	else
+		echo "FAIL: Script not found or not executable"
+	fi
+	;;
+  stop)
+	if [ -x "$SCRIPT_PATH" ]; then
+		"$SCRIPT_PATH" stop
+	else
+		echo "FAIL: Script not found or not executable"
+		exit 1
+	fi
+	;;
+  restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+  status)
+	if [ -x "$SCRIPT_PATH" ]; then
+		"$SCRIPT_PATH" status
+	else
+		echo "Script not found or not executable"
+	fi
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart|status}"
+	exit 1
+esac
+
+exit $?
