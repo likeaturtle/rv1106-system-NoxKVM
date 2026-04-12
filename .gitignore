@@ -4,3 +4,4 @@ output/*
 !output/.gitkeep
 .BoardConfig.mk
 RK-RELEASE-NOTES-IPC.txt
+.DS_Store
