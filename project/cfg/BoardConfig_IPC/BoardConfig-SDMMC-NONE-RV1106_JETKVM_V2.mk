@@ -9,17 +9,17 @@ export RK_CHIP=rv1106
 # Target Toolchain Cross Compile
 export RK_TOOLCHAIN_CROSS=arm-rockchip830-linux-uclibcgnueabihf
 
-# Target boot medium: emmc/spi_nor/spi_nand
-export RK_BOOT_MEDIUM=emmc
+# Target boot medium: emmc/spi_nor/spi_nand/sdmmc
+export RK_BOOT_MEDIUM=sdmmc
 
 # SKU identifier reported to OTA service
-export RK_SKU=jetkvm-v2
+export RK_SKU=jetkvm-v2-sdmmc
 
 # Uboot defconfig
 export RK_UBOOT_DEFCONFIG=rv1106-jetkvm-v2_defconfig
 
-# Uboot defconfig fragment
-export RK_UBOOT_DEFCONFIG_FRAGMENT=rk-emmc.config
+# Uboot defconfig fragment (empty: do not load rk-emmc.config for SDMMC)
+export RK_UBOOT_DEFCONFIG_FRAGMENT=
 
 # Kernel defconfig
 export RK_KERNEL_DEFCONFIG=rv1106-jetkvm-v2_defconfig
@@ -28,7 +28,7 @@ export RK_KERNEL_DEFCONFIG=rv1106-jetkvm-v2_defconfig
 # export RK_KERNEL_DEFCONFIG_FRAGMENT=rv1106-jetkvm-v2.config
 
 # Kernel dts
-export RK_KERNEL_DTS=rv1106g-jetkvm-v2.dts
+export RK_KERNEL_DTS=rv1106g-jetkvm-v2-sdmmc.dts
 
 #misc image
 export RK_MISC=wipe_all-misc.img
@@ -54,7 +54,7 @@ export RK_BOOTARGS_CMA_SIZE="48M"
 #export RK_PARTITION_CMD_IN_ENV="32K(env),512K@32K(idblock),256K(uboot),32M(boot),1G(rootfs),1G(oem),1G(userdata),-(media)"
 
 # export RK_PARTITION_CMD_IN_ENV="32K(env),512K@32K(idblock),256K(uboot_a),256K(uboot_b),256K(misc),32M(boot_a),32M(boot_b),512M(system_a),512M(system_b),256M(oem),-(userdata)"
-export RK_PARTITION_CMD_IN_ENV="32K(env),512K@32K(idblock),256K(uboot_a),256K(uboot_b),256K(misc),32M(boot_a),32M(boot_b),512M(system_a),512M(system_b),13640M(userdata)"
+export RK_PARTITION_CMD_IN_ENV="32K(env),512K@32K(idblock),256K(uboot_a),256K(uboot_b),256K(misc),32M(boot_a),32M(boot_b),512M(system_a),512M(system_b),-(userdata)"
 # export RK_PARTITION_CMD_IN_ENV="32K(env),512K@32K(idblock),256K(uboot_a),256K(uboot_b),256K(misc),32M(boot_a),32M(boot_b),512M(system_a),512M(system_b),-(userdata)"
 
 # config partition's filesystem type (squashfs is readonly)

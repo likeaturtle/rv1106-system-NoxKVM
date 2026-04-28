@@ -524,7 +524,7 @@ function build_uboot(){
 
 		build_mcu $RK_UBOOT_RKBIN_MCU_CFG "__MCU_CONTINUE__"
 		case $RK_BOOT_MEDIUM in
-			emmc)
+			emmc|sdmmc)
 				tempfile=$target_ini_dir/RV1106MINIALL_EMMC_TB.ini
 				;;
 			spi_nor)
@@ -587,7 +587,11 @@ function build_env(){
 	fi
 
 	echo "$SYS_BOOTARGS" >> $ENV_CFG_FILE
-	echo "sd_parts=mmcblk0:16K@512(env),512K@32K(idblock),4M(uboot)" >> $ENV_CFG_FILE
+	case $RK_BOOT_MEDIUM in
+		sdmmc) local _mmc_dev=mmcblk1 ;;
+		*)     local _mmc_dev=mmcblk0 ;;
+	esac
+	echo "sd_parts=${_mmc_dev}:16K@512(env),512K@32K(idblock),4M(uboot)" >> $ENV_CFG_FILE
 	# build env.img
 	$RK_PROJECT_PATH_PC_TOOLS/mkenvimage -s $ENV_SIZE -p 0x0 -o $env_cfg_img $ENV_CFG_FILE
 	chmod +r $env_cfg_img
@@ -752,7 +756,7 @@ EOF
 	echo "echo \"Erase misc partition\"" >> $erase_misc_script
 
 	case $RK_BOOT_MEDIUM in
-		emmc|spi_nor)
+		emmc|sdmmc|spi_nor)
 			echo "dd if=/dev/zero of=/dev/block/by-name/misc bs=32 count=1 seek=512" >> $erase_misc_script
 			echo "if [ \$? -ne 0 ];then" >> $erase_misc_script
 			echo "	echo \"Error: Erase misc partition failed.\"" >> $erase_misc_script
@@ -836,7 +840,7 @@ EOF
 	echo "echo \"Start to write partitions\"" >> $ota_script
 
 	case $RK_BOOT_MEDIUM in
-		emmc|spi_nor)
+		emmc|sdmmc|spi_nor)
 			echo "for image in \$(ls /dev/block/by-name)" >> $ota_script
 			echo "do" >> $ota_script
 			echo "	if [ -f \$COMMON_DIR/\${image}.img ];then" >> $ota_script
@@ -941,6 +945,150 @@ function build_updateimg(){
 	finish_build
 }
 
+# Build a flat, dd-able SD-card image for sdmmc boards.
+# Layout follows the cmdline blkdevparts (kernel uses these directly — no
+# MBR/GPT involved). The userdata partition is sized '-' (rest-of-disk); we
+# ship a 1 GiB initial ext4 containing install_to_userdata content (jetkvm
+# binary etc.) at userdata's start offset, and rely on mount_part's first-boot
+# resize2fs to grow it to the end of the SD card.
+function build_sd_dd_image(){
+	[ "$RK_BOOT_MEDIUM" = "sdmmc" ] || return 0
+
+	local image_dir=$RK_PROJECT_OUTPUT_IMAGE
+	local out=$image_dir/update_sd.img
+	local out_zip=$image_dir/update_sd.img.zip
+	local userdata_img=$image_dir/userdata.img
+	local userdata_size_bytes=$((256 * 1024 * 1024))    # 256 MiB initial userdata
+	                                                    # first-boot resize2fs grows to card end
+
+	if [ -z "$GLOBAL_PARTITIONS" ]; then
+		msg_error "GLOBAL_PARTITIONS empty — parse_partition_env must run first"
+		exit 1
+	fi
+
+	# Build a 1 GiB ext4 userdata.img seeded from $RK_PROJECT_PACKAGE_USERDATA_DIR.
+	# Bypass build_mkimg because get_partition_size returns 0 for '-(userdata)'.
+	# No resize2fs -M: the ext4 superblock advertises 1 GiB, and first boot
+	# expands it to the end of the partition (= end of the card).
+	local mkfs_dir=$SDK_ROOT_DIR/sysdrv/tools/pc/e2fsprogs
+	local mkfs_bin=$mkfs_dir/mkfs.ext4
+	[ -x "$mkfs_dir/bin/mkfs.ext4" ] && mkfs_bin=$mkfs_dir/bin/mkfs.ext4
+
+	mkdir -p $RK_PROJECT_PACKAGE_USERDATA_DIR
+	# Match build_mkimg: strip + chown root:root so the seeded tree on the SD
+	# card doesn't depend on the build host's uid/gid. build_mkimg userdata
+	# is a no-op on SDMMC (size '-' → part_size=0), so we run it here.
+	__RELEASE_FILESYSTEM_FILES $RK_PROJECT_PACKAGE_USERDATA_DIR
+	rm -f $userdata_img
+	# Tuned for first-boot resize2fs to a 32 GiB–2 TiB SD card:
+	#   -b 4096       4K blocks → 4× fewer block groups vs mkfs default (1K for a
+	#                 256 MiB FS), so resize2fs metadata work scales sanely.
+	#   -T largefile  inode_ratio=1 MiB → far fewer inodes per group, so the
+	#                 lazy-itable kthread doesn't saturate SD I/O after mount
+	#                 (a 1 TiB FS gets ~1M inodes instead of ~64M).
+	#   -O 64bit      enables meta_bg-style growth past the resize_inode cap
+	#                 (default reserve only covers ~64 GiB on a 256 MiB seed).
+	#   -E resize=    explicit resize_inode reservation for up to 2 TiB.
+	# huge_file stays on (default) — 1 TiB userdata may legitimately hold >2 GiB
+	# files (recordings, captures).
+	MKE2FS_CONFIG=$mkfs_dir/mke2fs.conf $mkfs_bin \
+		-d $RK_PROJECT_PACKAGE_USERDATA_DIR \
+		-L userdata -m 1 \
+		-b 4096 \
+		-T largefile \
+		-O 64bit \
+		-E resize=$((2 * 1024 * 1024 * 1024 / 4)) \
+		$userdata_img $((userdata_size_bytes / 1024 / 1024))M
+
+	# Parse GLOBAL_PARTITIONS. Each entry is "SIZE@OFFSET(name)" with SIZE/OFFSET
+	# in hex bytes (or "-" for the growup tail).
+	local userdata_offset_sec=0
+	local -a parts=()
+	local IFS_save=$IFS
+	IFS=,
+	for part in $GLOBAL_PARTITIONS; do
+		local pname psize poff
+		pname=${part#*\(}; pname=${pname%\)}
+		psize=${part%@*}
+		poff=${part#*@}; poff=${poff%%\(*}
+		IFS=$IFS_save
+
+		# Locate the matching .img file. Prefer ${name}.img; fall back to the
+		# A/B-stripped form (some flows ship a single uboot.img for both slots).
+		local img_file=""
+		if [ -f "$image_dir/${pname}.img" ]; then
+			img_file=$image_dir/${pname}.img
+		elif [ -f "$image_dir/${pname%_[ab]}.img" ]; then
+			img_file=$image_dir/${pname%_[ab]}.img
+		fi
+
+		if [ "$psize" = "-" ]; then
+			# Growup partition (userdata). Remember its offset and skip; we
+			# append our 1 GiB ext4 there ourselves.
+			[ "$pname" = "userdata" ] && userdata_offset_sec=$(( poff / 512 ))
+			IFS=,
+			continue
+		fi
+
+		if [ -z "$img_file" ]; then
+			# No image for this partition (e.g. misc) — leave as zeros.
+			IFS=,
+			continue
+		fi
+
+		local off_sec=$(( poff / 512 ))
+		local end_sec=$(( (poff + psize) / 512 ))
+		parts+=("$img_file $off_sec")
+		[ $end_sec -gt $userdata_offset_sec ] && userdata_offset_sec=$end_sec
+		IFS=,
+	done
+	IFS=$IFS_save
+
+	if [ ${#parts[@]} -eq 0 ]; then
+		msg_error "No fixed-size partition images found in $image_dir"
+		exit 1
+	fi
+	if [ $userdata_offset_sec -eq 0 ]; then
+		msg_error "Could not determine userdata offset"
+		exit 1
+	fi
+
+	local total_bytes=$(( userdata_offset_sec * 512 + userdata_size_bytes ))
+
+	msg_info "Building SD dd image: $out"
+	msg_info "  userdata starts at sector $userdata_offset_sec (0x$(printf %X $userdata_offset_sec), byte 0x$(printf %X $((userdata_offset_sec * 512))))"
+	msg_info "  total size: $((total_bytes / 1024 / 1024)) MiB"
+
+	rm -f $out
+	truncate -s $total_bytes $out
+
+	# Write each fixed partition image at its sector offset. conv=sparse keeps
+	# zero blocks (e.g. squashfs padding inside system_a/b) as holes.
+	local entry
+	for entry in "${parts[@]}"; do
+		local img=${entry%% *}
+		local off_sec=${entry##* }
+		printf "  [%-16s] sector 0x%-8X  %s\n" "$(basename $img)" "$off_sec" "$(du -h $img | cut -f1)"
+		dd if=$img of=$out bs=512 seek=$off_sec \
+			conv=notrunc,sparse status=none
+	done
+
+	printf "  [%-16s] sector 0x%-8X  %s\n" "userdata.img" "$userdata_offset_sec" \
+		"$(du -h $userdata_img | cut -f1)"
+	dd if=$userdata_img of=$out bs=512 seek=$userdata_offset_sec \
+		conv=notrunc,sparse status=none
+
+	sync $out
+
+	# Zip it. The image is mostly zero-filled holes; deflate squeezes them flat.
+	rm -f $out_zip
+	(cd $image_dir && zip -9 $(basename $out_zip) $(basename $out))
+
+	msg_info "SD dd image: $out_zip ($(du -h $out_zip | cut -f1))"
+
+	finish_build
+}
+
 function build_unpack_updateimg(){
 	IMAGE_PATH=$RK_PROJECT_OUTPUT_IMAGE/update.img
 	UNPACK_FILE_DIR=$RK_PROJECT_OUTPUT_IMAGE/unpack
@@ -969,7 +1117,7 @@ function build_factory(){
 	# run programmer image tool
 	mkdir -p $FACTORY_FILE_DIR
 	case $RK_BOOT_MEDIUM in
-		emmc)
+		emmc|sdmmc)
 			$PROGRAMMER_TOOL_PATH/programmer_image_tool -i $IMAGE_PATH -o $FACTORY_FILE_DIR -t emmc
 			;;
 		spi_nor)
@@ -1282,6 +1430,10 @@ EOF
 		(cd $RK_PROJECT_PACKAGE_ROOTFS_DIR/etc; ln -sf ../usr/share/iqfiles ./)
 	fi
 
+	if [ -n "$RK_SKU" ]; then
+		echo "$RK_SKU" > $RK_PROJECT_PACKAGE_ROOTFS_DIR/etc/jetkvm-sku
+	fi
+
 	if [ -f $RK_PROJECT_FILE_ROOTFS_SCRIPT ];then
 		chmod a+x $RK_PROJECT_FILE_ROOTFS_SCRIPT
 		cp -f $RK_PROJECT_FILE_ROOTFS_SCRIPT $RK_PROJECT_PACKAGE_ROOTFS_DIR/etc/init.d
@@ -1473,6 +1625,11 @@ function parse_partition_file()
 			RK_PARTITION_ARGS="blkdevparts=mmcblk0:$RK_PARTITION_CMD_IN_ENV"
 			part_num=1
 			;;
+		sdmmc)
+			storage_dev_prefix=mmcblk1p
+			RK_PARTITION_ARGS="blkdevparts=mmcblk1:$RK_PARTITION_CMD_IN_ENV"
+			part_num=1
+			;;
 		spi_nor)
 			storage_dev_prefix=mtdblock
 			RK_PARTITION_ARGS="mtdparts=sfc_nor:$RK_PARTITION_CMD_IN_ENV"
@@ -1540,6 +1697,13 @@ function parse_partition_file()
 						SYS_BOOTARGS="${SYS_BOOTARGS} root=/dev/mmcblk0p${part_num}"
 					fi
 					;;
+				sdmmc)
+					if [ "$RK_ENABLE_FASTBOOT" = "y" -a "$RK_ENABLE_RAMDISK_PARTITION" = "y" ]; then
+						SYS_BOOTARGS="${SYS_BOOTARGS} root=/dev/rd0"
+					else
+						SYS_BOOTARGS="${SYS_BOOTARGS} root=/dev/mmcblk1p${part_num}"
+					fi
+					;;
 				spi_nor)
 					if [ "$RK_ENABLE_FASTBOOT" = "y" -a "$RK_ENABLE_RAMDISK_PARTITION" = "y" ]; then
 						SYS_BOOTARGS="${SYS_BOOTARGS} root=/dev/rd0"
@@ -1578,7 +1742,7 @@ mountpt=\$2
 part_fstype=\$3
 part_realdev=\$(realpath \$part_dev)
 if [ ! -d \$mountpt ]; then
-	if [ "\$mountpt" = "IGNORE" -a "emmc" = "\$bootmedium" ];then
+	if [ "\$mountpt" = "IGNORE" -a \( "emmc" = "\$bootmedium" -o "sdmmc" = "\$bootmedium" \) ];then
 		if [ "\$root_dev" = "\$part_realdev" ];then
 			resize2fs \$part_dev
 		fi
@@ -1590,7 +1754,7 @@ if [ ! -d \$mountpt ]; then
 fi
 if test -h \$part_dev; then
 case \$bootmedium in
-	emmc)
+	emmc|sdmmc)
 		if [ "\$root_dev" = "\$part_realdev" ];then
 			resize2fs \$part_dev
 		else
@@ -1823,7 +1987,7 @@ function __GET_TARGET_PARTITION_FS_TYPE()
 			GLOBAL_ROOT_FILESYSTEM_NAME=${part_name%_[ab]}
 			export RK_PROJECT_ROOTFS_TYPE=$part_fs_type
 			case $RK_BOOT_MEDIUM in
-				emmc)
+				emmc|sdmmc)
 					SYS_BOOTARGS="$SYS_BOOTARGS rootfstype=$part_fs_type"
 					;;
 				spi_nor)
@@ -1996,7 +2160,7 @@ function build_mkimg()
 						$fit_target_optional_param
 				fi
 			else
-				if [ "$RK_BOOT_MEDIUM" = "emmc" -o "$RK_BOOT_MEDIUM" = "spi_nor" ];then
+				if [ "$RK_BOOT_MEDIUM" = "emmc" -o "$RK_BOOT_MEDIUM" = "spi_nor" -o "$RK_BOOT_MEDIUM" = "sdmmc" ];then
 					$RK_PROJECT_TOOLS_MKFS_EROFS $src $dst $RK_EROFS_COMP
 				else
 					$RK_PROJECT_TOOLS_MKFS_UBIFS $src $(dirname $dst) $part_size $part_name $fs_type $RK_EROFS_COMP
@@ -2004,7 +2168,7 @@ function build_mkimg()
 			fi
 			;;
 		squashfs)
-			if [ "$RK_BOOT_MEDIUM" = "emmc" -o "$RK_BOOT_MEDIUM" = "spi_nor" ];then
+			if [ "$RK_BOOT_MEDIUM" = "emmc" -o "$RK_BOOT_MEDIUM" = "spi_nor" -o "$RK_BOOT_MEDIUM" = "sdmmc" ];then
 				$RK_PROJECT_TOOLS_MKFS_SQUASHFS $src $dst $RK_SQUASHFS_COMP
 			else
 				$RK_PROJECT_TOOLS_MKFS_UBIFS $src $(dirname $dst) $part_size $part_name $fs_type $RK_SQUASHFS_COMP
@@ -2241,6 +2405,7 @@ function build_firmware(){
 
 	[ "$RK_ENABLE_RECOVERY" = "y" -o "$RK_ENABLE_OTA" = "y" ] && build_ota
 	build_updateimg
+	build_sd_dd_image
 
 	finish_build
 }
