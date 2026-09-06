@@ -23,7 +23,7 @@ An official build system for JetKVM firmware, enabling you to compile and custom
 #### 2. Select the Board Configuration
 
 ```bash
-./build.sh lunch ./build.sh lunch project/cfg/BoardConfig_IPC/BoardConfig-NAND-NONE-RV1106_JETKVM_V2.mk
+./build.sh lunch project/cfg/BoardConfig_IPC/BoardConfig-NAND-NONE-RV1106_JETKVM_V2.mk
 ```
 
 #### 3. Automatic Compilation
