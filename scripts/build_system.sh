@@ -171,7 +171,7 @@ build_system_variant() {
     local board_config="$3"
 
     run_quiet "Selecting ${label} board (${sku})" ./build.sh lunch "$board_config"
-    run_quiet "Updating JetKVM app binary for ${label} (${sku})" ./update_app.sh "$sku"
+    run_quiet "Updating JetKVM app binary for ${label} (${sku})" ./update_app.sh
     run_quiet "Building ${label} system image" ./build.sh
 
     stage_system_variant "$label" "$sku"

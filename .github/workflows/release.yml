@@ -112,7 +112,7 @@ jobs:
           generate_release_notes: true
 
   upload-cos:
-    needs: build
+    needs: [build, release]
     runs-on: ubuntu-latest
     name: Upload to Tencent COS
     env:
@@ -152,3 +152,20 @@ jobs:
           upload_versioned_and_latest OTA-Image/update_ota.tar "${VERSION}/update_ota.tar"
           upload_versioned_and_latest Full-Image/update.img "${VERSION}/update.img"
           upload_versioned_and_latest jetkvm-native-buildkit/buildkit.tar.zst "${VERSION}/buildkit.tar.zst"
+
+  update-cos-index:
+    needs: [build, upload-cos]
+    runs-on: ubuntu-latest
+    name: Trigger cos-index-repo update
+    steps:
+      - name: Dispatch workflow
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.COS_INDEX_PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'likeaturtle',
+              repo: 'cos-index-repo',
+              workflow_id: 'update-cos-index.yml',
+              ref: 'main'
+            });
