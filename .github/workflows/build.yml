@@ -9,15 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - board: EMMC
-            sku: jetkvm-v2
-          - board: SDMMC
-            sku: jetkvm-v2-sdmmc
-    name: Build (${{ matrix.board }})
+    name: Build (NAND)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,40 +36,29 @@ jobs:
           echo "BUILD_VERSION_SOURCE=$BUILD_VERSION_SOURCE" >> $GITHUB_ENV
           echo "$BUILD_VERSION" > VERSION
       - name: Update jetkvm_app
-        run: ./update_app.sh "${{ matrix.sku }}"
+        run: ./update_app.sh
       - name: Build
         run: |
           echo "Version: $BUILD_VERSION (from $BUILD_VERSION_SOURCE)"
 
-          ./build.sh lunch BoardConfig_IPC/BoardConfig-${{ matrix.board }}-NONE-RV1106_JETKVM_V2.mk
+          ./build.sh lunch BoardConfig_IPC/BoardConfig-NAND-NONE-RV1106_JETKVM_V2.mk
           ./build.sh
       - name: Upload OTA image
         uses: actions/upload-artifact@v4
         with:
-          name: OTA-Image-${{ matrix.board }}
+          name: OTA-Image
           path: output/image/update_ota.tar
           retention-days: 7
-      - name: Upload Full image (EMMC)
-        if: matrix.board == 'EMMC'
+      - name: Upload Full image
         uses: actions/upload-artifact@v4
         with:
-          name: Full-Image-EMMC
+          name: Full-Image
           path: output/image/update.img
           retention-days: 7
-      - name: Upload SD image (SDMMC)
-        if: matrix.board == 'SDMMC'
-        uses: actions/upload-artifact@v4
-        with:
-          name: SD-Image-SDMMC
-          path: output/image/update_sd.img.zip
-          retention-days: 7
-          compression-level: 0
       - name: Create compressed buildkit
-        if: matrix.board == 'EMMC'
         run: |
           ./make_buildkit.sh
       - name: Upload buildkit
-        if: matrix.board == 'EMMC'
         uses: actions/upload-artifact@v4
         with:
           name: jetkvm-native-buildkit
