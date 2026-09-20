@@ -18,6 +18,7 @@ env:
   COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
   COS_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
   COS_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+  COS_DOMAIN: ${{ secrets.TENCENT_COS_DOMAIN }}
 
 jobs:
   upload-cos:
@@ -90,7 +91,7 @@ jobs:
         run: |
           VERSION=${{ inputs.version }}
           SYSTEM_HASH=$(shasum -a 256 OTA-Image/update_ota.tar | cut -d ' ' -f 1)
-          SYSTEM_URL="https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/${COS_BASE_PATH}/latest/update_ota.tar"
+          SYSTEM_URL="https://${COS_DOMAIN}/${COS_BASE_PATH}/latest/update_ota.tar"
 
           printf '{"systemVersion":"%s","systemUrl":"%s","systemHash":"%s"}\n' \
             "$VERSION" "$SYSTEM_URL" "$SYSTEM_HASH" > metadata.json
