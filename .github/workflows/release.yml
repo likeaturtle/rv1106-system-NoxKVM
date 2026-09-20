@@ -134,6 +134,15 @@ jobs:
           chmod 755 "$HOME/.local/bin/coscli"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Verify COS credentials
+        run: |
+          echo "COS_BUCKET=$COS_BUCKET"
+          echo "COS_REGION=$COS_REGION"
+          echo "COS_SECRET_ID=${COS_SECRET_ID:0:8}***"
+          echo "Endpoint=cos.${COS_REGION}.myqcloud.com"
+          COSCLI_AUTH=(--init-skip -i "$COS_SECRET_ID" -k "$COS_SECRET_KEY" -e "cos.${COS_REGION}.myqcloud.com")
+          coscli "${COSCLI_AUTH[@]}" ls "cos://${COS_BUCKET}/${COS_BASE_PATH}/" || echo "COS authentication/listing failed!"
+
       - name: Upload firmware to COS
         run: |
           VERSION=${{ needs.build.outputs.version }}
