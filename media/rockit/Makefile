@@ -16,6 +16,11 @@ PKG_BUILD ?= build
 RK_MEDIA_OPTS += -Wl,-rpath-link,${RK_MEDIA_OUTPUT}/lib:$(RK_MEDIA_OUTPUT)/root/usr/lib
 PKG_CONF_OPTS += -DCMAKE_C_FLAGS="$(RK_MEDIA_OPTS)" -DCMAKE_CXX_FLAGS="$(RK_MEDIA_OPTS)"
 PKG_CONF_OPTS += -DRKPLATFORM=ON
+# rockit's CMakeLists.txt uses cmake_minimum_required(VERSION 2.8.8), which
+# CMake >= 4.0 rejects ("Compatibility with CMake < 3.5 has been removed").
+# Ask CMake to keep the legacy (3.5) policy behaviour instead of patching
+# every CMakeLists.txt in the rockit tree. Older CMake ignores this entry.
+PKG_CONF_OPTS += -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
 # debug: build cmake with more message
 # PKG_CONF_OPTS += -DCMAKE_VERBOSE_MAKEFILE=ON
