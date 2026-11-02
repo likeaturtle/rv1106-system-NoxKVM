@@ -8,106 +8,109 @@
 
 </div>
 
-An official build system for JetKVM firmware, enabling you to compile and customize every aspect of your JetKVM device - from bootloader to applications. This repository provides a comprehensive SDK for building firmware images tailored to your JetKVM device. It handles U-Boot, kernel, root filesystem, media, and optional applications - all under a single repository. 
+JetKVM 固件的官方构建系统，可编译并定制 JetKVM 设备的每一处细节——从 bootloader 到应用程序。本仓库是一套完整的 SDK，用于构建适配 JetKVM 设备的固件镜像，并将 U-Boot、内核、根文件系统、媒体组件以及可选应用统一在一个仓库中管理。
 
 ---
 
-## Quick Start
+## 快速开始
 
-#### 1. Install dependencies
+#### 1. 安装依赖
 
 ```bash
 ./install.sh
 ```
 
-#### 2. Select the Board Configuration
+#### 2. 选择单板配置
 
 ```bash
 ./build.sh lunch project/cfg/BoardConfig_IPC/BoardConfig-NAND-NONE-RV1106_JETKVM_V2.mk
 ```
 
-#### 3. Automatic Compilation
+#### 3. 自动编译
 
 ```bash
 ./build.sh
 ```
 
-This single command builds U-Boot, the kernel, the root filesystem, and any additional media or applications configured for your JetKVM device. The final images will appear in output/image/.
+这一条命令会完成 U-Boot、内核、根文件系统，以及为 JetKVM 设备配置的媒体与应用组件的构建，最终镜像将输出到 `output/image/`。
 
-## Detailed Build Steps
+## 详细构建步骤
 
-For incremental development or debugging, you can build individual components:
+增量开发或调试时，可以单独构建各个组件：
 
-### Build U-Boot
+### 构建 U-Boot
 
 ```bash
 ./build.sh clean uboot
 ./build.sh uboot
 ```
 
-Generates:
+生成：
 
 ```
 output/image/MiniLoaderAll.bin
 output/image/uboot.img
 ```
 
-### Build Kernel
+### 构建内核
 
 ```bash
 ./build.sh clean kernel
 ./build.sh kernel
 ```
 
-Generates: `output/image/boot.img`
+生成：`output/image/boot.img`
 
-### Build Rootfs
+### 构建根文件系统
 
 ```
 ./build.sh clean rootfs
 ./build.sh rootfs
 ```
 
-Generates: `output/image/rootfs.img`
+生成：`output/image/rootfs.img`
 
-Then, to package everything (including rootfs.img) into your final JetKVM firmware:
+随后将包括 rootfs.img 在内的所有组件打包为最终 JetKVM 固件：
 
 ```bash
 ./build.sh firmware
 ```
 
-### Build Media
+### 构建媒体组件
 
 ```bash
 ./build.sh clean media
 ./build.sh media
 ```
 
-Generates media-related libraries or drivers in: `output/out/media_out`
+生成的媒体相关库或驱动位于：`output/out/media_out`
 
-### Build Reference Applications
+### 构建参考应用
 
 ```bash
 ./build.sh clean app
 ./build.sh app
 ```
 
-Generates application binaries in: `output/out/app_out`
+生成的应用二进制位于：`output/out/app_out`
 
 > [!NOTE]  
-> Reference applications may depend on the media build.
+> 参考应用可能依赖媒体组件的构建结果。
 
-### Firmware Packaging
+> [!TIP]  
+> 若使用已编译好的 `jetkvm_app`，替换方法见 [二次开发修改内容注意事项.md](二次开发修改内容注意事项.md) 第十一节。
+
+### 固件打包
 
 ```bash
 ./build.sh firmware
 ```
 
-Assembles all components into flashable images, placed in `output/image/`.
+将各组件组装为可烧写的镜像，输出到 `output/image/`。
 
-### Output Directory
+### 输出目录
 
-After building, your output/ directory should look like this:
+构建完成后，`output/` 目录结构大致如下：
 
 ```
 output/
@@ -128,58 +131,62 @@ output/
     └── userdata
 ```
 
-- `image/` -  Contains final firmware images for flashing onto your JetKVM device.
-- `out/` - Holds intermediate build artifacts like compiled apps, media components, and the rootfs packaging directory.
+- `image/` —— 用于烧写到 JetKVM 设备的最终固件镜像。
+- `out/` —— 存放中间构建产物，如编译好的应用、媒体组件以及 rootfs 打包目录。
 
-## Configuration Options
+## 配置选项
 
-All variables for customizing builds—like CPU architecture, boot medium, partitioning, or optional features—are documented in cfg-all-items-introduction.txt
+所有用于定制构建的变量（CPU 架构、启动介质、分区布局、可选功能等）都在 cfg-all-items-introduction.txt 中有说明。
 
-**A few notable examples:**
+**几个常用示例：**
 
-| Item                | Description |
+| 配置项                | 说明 |
 |-------------------------|---------|
-| **RK_ARCH**            | Builds 32-bit (`arm`) or 64-bit (`arm64`) firmware. |
-| **RK_BOOT_MEDIUM**     | Specifies the storage medium: `emmc`, `spi_nor`, `spi_nand`, or `slc_nand`. |
-| **RK_UBOOT_DEFCONFIG** | Specifies the U-Boot defconfig file. |
-| **RK_KERNEL_DEFCONFIG** | Specifies the Kernel defconfig file. |
-| **RK_KERNEL_DTS**      | Target DTS (Device Tree) for kernel builds. |
-| **RK_PARTITION_CMD_IN_ENV** | Defines partition layouts for the firmware. |
-| **RK_APP_TYPE**        | Determines which reference apps to include. |
-| **RK_ENABLE_WIFI**     | Enables Wi-Fi functionality for the JetKVM firmware. |
-| **RK_CHIP**            | **Cannot be modified**: Different chips correspond to different SDKs. |
-| **RK_TOOLCHAIN_CROSS** | **Cannot be modified**: Defines the cross-compilation toolchain. |
+| **RK_ARCH**            | 构建 32 位（`arm`）或 64 位（`arm64`）固件。 |
+| **RK_BOOT_MEDIUM**     | 指定存储介质：`emmc`、`spi_nor`、`spi_nand` 或 `slc_nand`。 |
+| **RK_UBOOT_DEFCONFIG** | 指定 U-Boot 的 defconfig 文件。 |
+| **RK_KERNEL_DEFCONFIG** | 指定内核的 defconfig 文件。 |
+| **RK_KERNEL_DTS**      | 内核构建使用的目标 DTS（设备树）。 |
+| **RK_PARTITION_CMD_IN_ENV** | 定义固件的分区布局。 |
+| **RK_APP_TYPE**        | 决定打包哪些参考应用。 |
+| **RK_ENABLE_WIFI**     | 为 JetKVM 固件启用 Wi-Fi 功能。 |
+| **RK_CHIP**            | **不可修改**：不同芯片对应不同的 SDK。 |
+| **RK_TOOLCHAIN_CROSS** | **不可修改**：定义交叉编译工具链。 |
 
-See the [cfg-all-items-introduction.txt](https://github.com/BuildJet/rv1106-sdk/blob/main/project/cfg-all-items-introduction.txt) file for a complete list of config variables
+完整的配置变量列表见 [cfg-all-items-introduction.txt](https://github.com/BuildJet/rv1106-sdk/blob/main/project/cfg-all-items-introduction.txt)
 
-## Kernel Config
-To start the kernel configuration,
+## 内核配置
+
+开始修改内核配置：
 
 ```bash
 cp ./arch/arm/configs/rv1106-jetkvm-v2_defconfig .config
 make ARCH=arm menuconfig
 ```
 
-After the kernel configuration is complete, you can save the configuration file as follows:
+配置完成后，按如下方式保存配置：
 
 ```bash
 make ARCH=arm savedefconfig
 cp defconfig ./arch/arm/configs/rv1106-jetkvm-v2_defconfig
 ```
 
-## Contributing
+## 贡献
 
-We welcome contributions from the community! Whether it's improving the firmware, adding new features, or enhancing documentation, your input is valuable. We also have some rules and taboos here, so please read this page and our [Code of Conduct](/CODE_OF_CONDUCT.md) carefully.
+欢迎社区贡献！无论是改进固件、新增功能还是完善文档，你的参与都很有价值。本仓库也有相应的规则与禁忌，请先仔细阅读本页内容与我们的[行为准则](/CODE_OF_CONDUCT.md)。
 
-Please also review our Code of Conduct to keep the community welcoming and constructive.
+也请遵守行为准则，共同维护一个友好、建设性的社区氛围。
 
-## Notices
+## 注意事项
 
-### Avoid Copying from Windows
-Moving the source code on Windows might break file permissions or symbolic links. Always handle the codebase in a native Linux environment.
+### 避免从 Windows 拷贝代码
 
-### MacOS has a case-insensitive filesystem by default
-This may cause a git clone on this repo into a MacOS environment to always have file changes. Instead, clone it into a case-sensitive filesystem mount and edit from there:
+在 Windows 上移动源码可能破坏文件权限或符号链接。请始终在原生 Linux 环境中操作本代码库。
+
+### macOS 默认文件系统不区分大小写
+
+这会导致在 macOS 环境下 clone 本仓库后始终显示有文件变更。建议将仓库 clone 到区分大小写的文件系统挂载点中再进行编辑：
+
 ```sh
 hdiutil create -type SPARSE -fs 'Case-sensitive Journaled HFS+' -size 10g -volname CaseSensitive ~/CaseSensitive.dmg.sparseimage
 hdiutil attach ~/CaseSensitive.dmg.sparseimage
@@ -188,7 +195,8 @@ cd /Volumes/CaseSensitive
 git clone git@github.com:jetkvm/rv1106-system.git
 ```
 
-### Libraries used by this repo may not existing for arm64 architectures
-Packages like `g++-multilib` and `gcc-multilib` are not published to the standard debian apt repositories for amd64. You may need to resort to running this on an x86/amd64 machine, or in a virtual machine/devcontainer for amd64.
+### 本仓库使用的部分库可能没有 arm64 版本
 
-Happy Building - With this SDK, you’ll have full control of your JetKVM firmware—tailoring it to your hardware, storage preferences, and custom application needs.
+`g++-multilib`、`gcc-multilib` 等软件包并未发布到 amd64 的标准 debian apt 源中。你可能需要在 x86/amd64 机器上，或在使用 amd64 架构的虚拟机/devcontainer 中运行本 SDK。
+
+祝构建顺利 —— 借助这套 SDK，你将完全掌控 JetKVM 固件，可针对自己的硬件、存储方案与定制应用需求进行裁剪。
